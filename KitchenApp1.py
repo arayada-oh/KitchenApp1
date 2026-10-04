@@ -143,7 +143,7 @@ elif menu == "🛒 รายการที่ต้องซื้อ (Shopping
             # กรองข้อมูลตามโหมดที่เลือก
             if view_mode == "❌ เฉพาะรายการที่หมดแล้ว (Stock = 0)":
                 # แปลงค่า Stock เป็นตัวเลขเพื่อกรองหา 0 หรือติดลบ
-                filtered_df = df_stock[pd.to_numeric(df_stock['Stock'], errors='coerce') <= 0]
+                filtered_df = df_stock[pd.to_numeric(df_stock['Stock'], errors='coerce') = 0]
             else:
                 filtered_df = df_stock
             
