@@ -119,7 +119,7 @@ elif menu == "🔍 ค้นหาวัตถุดิบ":
     else:
         st.warning("ไม่พบข้อมูลในระบบ")
 
-# # ==========================================
+# ==========================================
 # 🛒 หน้าเช็คของทั้งหมด & ตะกร้าสินค้า
 # ==========================================
 elif menu == "🛒 รายการที่ต้องซื้อ (Shopping Cart)":
@@ -128,39 +128,44 @@ elif menu == "🛒 รายการที่ต้องซื้อ (Shopping
     tab1, tab2 = st.tabs(["📦 รายการวัตถุดิบทั้งหมด", "🛍️ ตะกร้าสินค้า"])
     
     with tab1:
-        st.subheader("สถานะวัตถุดิบในครัว (แยกตามหมวดหมู่)")
+        st.subheader("สถานะวัตถุดิบในครัว (แสดงแบบกล่องพับแยกตามหมวดหมู่)")
         
         if not df_stock.empty:
-            # จัดกลุ่มข้อมูลตามหมวดหมู่ (Category)
-            grouped = df_stock.groupby('Category')
-            
-            for category_name, group_df in grouped:
-                # ใช้ st.expander เพื่อทำเป็นกล่องพับได้ แยกตามชื่อหมวดหมู่
-                # (สามารถเติมสัญลักษณ์หรือจำนวนรายการในวงเล็บได้ถ้าต้องการ)
-                with st.expander(f"🏷️ {category_name} ({len(group_df)} รายการ)", expanded=False):
+            # ตรวจสอบว่ามีคอลัมน์ Category จริงไหม
+            if 'Category' in df_stock.columns:
+                # จัดกลุ่มข้อมูลตามหมวดหมู่
+                grouped = df_stock.groupby('Category')
+                
+                for category_name, group_df in grouped:
+                    # ถ้าชื่อหมวดหมู่ว่าง ให้ตั้งชื่อสำรอง
+                    cat_title = category_name if pd.notna(category_name) and str(category_name).strip() != "" else "อื่นๆ (Uncategorized)"
                     
-                    # วนลูปแสดงรายการวัตถุดิบที่อยู่ในหมวดหมู่นี้
-                    for index, row in group_df.iterrows():
-                        c1, c2, c3, c4 = st.columns([3, 2, 2, 2])
-                        with c1:
-                            st.write(f"**{row['วัตถุดิบ']}**")
-                            st.caption(f"ที่เก็บ: {row['storage_zone']}")
-                        with c2:
-                            st.write(f"เหลือ: {row['Stock']} {row['Unit']}")
-                        with c3:
-                            if row['Stock'] > 0:
-                                st.markdown("✅ **มีของ**")
-                            else:
-                                st.markdown("❌ **หมดแล้ว!**")
-                        with c4:
-                            item_id = str(row['ItemCode'])
-                            if st.button("➕ เพิ่ม", key=f"add_{item_id}"):
-                                if item_id in st.session_state.shopping_cart:
-                                    st.session_state.shopping_cart[item_id] += 1
+                    # สร้างกล่อง Expander สำหรับแต่ละหมวดหมู่
+                    with st.expander(f"🏷️ {cat_title} ({len(group_df)} รายการ)", expanded=False):
+                        
+                        for index, row in group_df.iterrows():
+                            c1, c2, c3, c4 = st.columns([3, 2, 2, 2])
+                            with c1:
+                                st.write(f"**{row['วัตถุดิบ']}**")
+                                st.caption(f"ที่เก็บ: {row.get('storage_zone', '-')}")
+                            with c2:
+                                st.write(f"เหลือ: {row['Stock']} {row['Unit']}")
+                            with c3:
+                                if float(row['Stock']) > 0:
+                                    st.markdown("✅ **มีของ**")
                                 else:
-                                    st.session_state.shopping_cart[item_id] = 1
-                                st.success(f"เพิ่ม {row['วัตถุดิบ']} แล้ว")
-                        st.divider()
+                                    st.markdown("❌ **หมดแล้ว!**")
+                            with c4:
+                                item_id = str(row['ItemCode'])
+                                if st.button("➕ เพิ่ม", key=f"add_exp_{item_id}"):
+                                    if item_id in st.session_state.shopping_cart:
+                                        st.session_state.shopping_cart[item_id] += 1
+                                    else:
+                                        st.session_state.shopping_cart[item_id] = 1
+                                    st.success(f"เพิ่ม {row['วัตถุดิบ']} แล้ว")
+                            st.divider()
+            else:
+                st.error("ไม่พบคอลัมน์ 'Category' ในตาราง Google Sheets ของคุณ กรุณาตรวจสอบชื่อหัวคอลัมน์ใหม่อีกครั้ง")
         else:
             st.info("ไม่มีข้อมูลสินค้า")
 
