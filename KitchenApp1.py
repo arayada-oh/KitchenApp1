@@ -26,6 +26,10 @@ def init_connection():
         creds = ServiceAccountCredentials.from_json_keyfile_name("credentials.json", scope)
 
     client = gspread.authorize(creds)
+    return client
+    else:
+        st.error("❌ ไม่พบ [gcp_service_account] ใน Streamlit Secrets")
+        st.stop()
 
 # เชื่อมต่อฐานข้อมูล
 try:
