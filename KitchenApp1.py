@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 import gspread
-from oauth2client.service_account import ServiceAccountCredentials
+from google.oauth2.service_account import Credentials
 
 # --- 1. ตั้งค่าหน้าเว็บ Streamlit ---
 st.set_page_config(
@@ -10,22 +10,17 @@ st.set_page_config(
     layout="wide"
 )
 
-# --- 2. ฟังก์ชันเชื่อมต่อ Google Sheets (ใช้ @st.cache_resource ช่วยจำค่าการเชื่อมต่อ) ---
-@st.cache_resource
-def init_connection():
-    scope = [
+# 1. กำหนด Scope เดิมที่คุณใช้งานอยู่
+scope = [
         "https://spreadsheets.google.com/feeds",
         "https://www.googleapis.com/auth/drive"
     ]
-   # 2. ดึงข้อมูลจาก st.secrets แทนการใช้ไฟล์ credentials.json
-# (ระบบจะเช็กว่าถ้าอยู่บนเว็บ Streamlit Cloud ให้ดึงจาก secrets แต่ถ้าเทสบนคอมตัวเองแบบเก่า จะมีวิธีดักเผื่อไว้ก็ได้ครับ)
+# 2. ดึงข้อมูลจาก st.secrets ของ Streamlit Cloud
 if "gcp_service_account" in st.secrets:
-    # ดึงค่าแบบ Dictionary จากระบบ Secrets ของ Streamlit Cloud
     creds_dict = dict(st.secrets["gcp_service_account"])
     creds = Credentials.from_service_account_info(creds_dict, scopes=scope)
 else:
-    # เผื่อกรณีรันบนคอมตัวเองแล้วยังอยากใช้ไฟล์ JSON เดิม (ถ้ามีไฟล์อยู่)
-    # แต่ถ้าบนคลาวด์ จะวิ่งเข้าเงื่อนไขด้านบนอัตโนมัติครับ
+    # เผื่อกรณีรันบนคอมตัวเอง (ถ้ายังอยากใช้ไฟล์ credentials.json แบบเดิม)
     from oauth2client.service_account import ServiceAccountCredentials
     creds = ServiceAccountCredentials.from_json_keyfile_name("credentials.json", scope)
 
