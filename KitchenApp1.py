@@ -27,9 +27,9 @@ def init_connection():
 
     client = gspread.authorize(creds)
     return client
-    else:
-        st.error("❌ ไม่พบ [gcp_service_account] ใน Streamlit Secrets")
-        st.stop()
+else:
+    st.error("❌ ไม่พบ [gcp_service_account] ใน Streamlit Secrets")
+    st.stop()
 
 # เชื่อมต่อฐานข้อมูล
 try:
