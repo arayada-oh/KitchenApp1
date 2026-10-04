@@ -128,44 +128,54 @@ elif menu == "🛒 รายการที่ต้องซื้อ (Shopping
     tab1, tab2 = st.tabs(["📦 รายการวัตถุดิบทั้งหมด", "🛍️ ตะกร้าสินค้า"])
     
     with tab1:
-        st.subheader("สถานะวัตถุดิบในครัว (แสดงแบบกล่องพับแยกตามหมวดหมู่)")
+        st.subheader("สถานะวัตถุดิบในครัว")
         
         if not df_stock.empty:
-            # ตรวจสอบว่ามีคอลัมน์ Category จริงไหม
-            if 'Category' in df_stock.columns:
-                # จัดกลุ่มข้อมูลตามหมวดหมู่
-                grouped = df_stock.groupby('Category')
-                
-                for category_name, group_df in grouped:
-                    # ถ้าชื่อหมวดหมู่ว่าง ให้ตั้งชื่อสำรอง
-                    cat_title = category_name if pd.notna(category_name) and str(category_name).strip() != "" else "อื่นๆ (Uncategorized)"
-                    
-                    # สร้างกล่อง Expander สำหรับแต่ละหมวดหมู่
-                    with st.expander(f"🏷️ {cat_title} ({len(group_df)} รายการ)", expanded=False):
-                        
-                        for index, row in group_df.iterrows():
-                            c1, c2, c3, c4 = st.columns([3, 2, 2, 2])
-                            with c1:
-                                st.write(f"**{row['วัตถุดิบ']}**")
-                                st.caption(f"ที่เก็บ: {row.get('storage_zone', '-')}")
-                            with c2:
-                                st.write(f"เหลือ: {row['Stock']} {row['Unit']}")
-                            with c3:
-                                if float(row['Stock']) > 0:
-                                    st.markdown("✅ **มีของ**")
-                                else:
-                                    st.markdown("❌ **หมดแล้ว!**")
-                            with c4:
-                                item_id = str(row['ItemCode'])
-                                if st.button("➕ เพิ่ม", key=f"add_exp_{item_id}"):
-                                    if item_id in st.session_state.shopping_cart:
-                                        st.session_state.shopping_cart[item_id] += 1
-                                    else:
-                                        st.session_state.shopping_cart[item_id] = 1
-                                    st.success(f"เพิ่ม {row['วัตถุดิบ']} แล้ว")
-                            st.divider()
+            # สร้างตัวเลือกโหมดการแสดงผล (ใช้ st.radio แบบแนวนอน)
+            view_mode = st.radio(
+                "เลือกการแสดงผล:", 
+                ["📋 แสดงทั้งหมด", "❌ เฉพาะรายการที่หมดแล้ว (Stock = 0)"], 
+                horizontal=True
+            )
+            
+            st.divider()
+            
+            # กรองข้อมูลตามโหมดที่เลือก
+            if view_mode == "❌ เฉพาะรายการที่หมดแล้ว (Stock = 0)":
+                # แปลงค่า Stock เป็นตัวเลขเพื่อกรองหา 0 หรือติดลบ
+                filtered_df = df_stock[pd.to_numeric(df_stock['Stock'], errors='coerce') <= 0]
             else:
-                st.error("ไม่พบคอลัมน์ 'Category' ในตาราง Google Sheets ของคุณ กรุณาตรวจสอบชื่อหัวคอลัมน์ใหม่อีกครั้ง")
+                filtered_df = df_stock
+            
+            # วนลูปแสดงผลรายการที่ผ่านการกรอง
+            if not filtered_df.empty:
+                for index, row in filtered_df.iterrows():
+                    c1, c2, c3, c4 = st.columns([3, 2, 2, 2])
+                    with c1:
+                        st.write(f"**{row['วัตถุดิบ']}**")
+                        st.caption(f"หมวด: {row.get('Category', '-')} | ที่เก็บ: {row.get('storage_zone', '-')}")
+                    with c2:
+                        st.write(f"เหลือ: {row['Stock']} {row['Unit']}")
+                    with c3:
+                        stock_val = float(row['Stock']) if str(row['Stock']).replace('.','',1).isdigit() else 0
+                        if stock_val > 0:
+                            st.markdown("✅ **มีของ**")
+                        else:
+                            st.markdown("❌ **หมดแล้ว!**")
+                    with c4:
+                        item_id = str(row['ItemCode'])
+                        if st.button("➕ เพิ่ม", key=f"add_mode_{item_id}"):
+                            if item_id in st.session_state.shopping_cart:
+                                st.session_state.shopping_cart[item_id] += 1
+                            else:
+                                st.session_state.shopping_cart[item_id] = 1
+                            st.success(f"เพิ่ม {row['วัตถุดิบ']} แล้ว")
+                    st.divider()
+            else:
+                if view_mode == "❌ เฉพาะรายการที่หมดแล้ว (Stock = 0)":
+                    st.success("🎉 เยี่ยมมาก! ตอนนี้ไม่มีวัตถุดิบไหนหมดเลย ของในครัวยังครบถ้วนดีครับ")
+                else:
+                    st.info("ไม่มีข้อมูลสินค้า")
         else:
             st.info("ไม่มีข้อมูลสินค้า")
 
