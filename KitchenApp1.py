@@ -11,21 +11,21 @@ st.set_page_config(
 )
 
 # 1. กำหนด Scope เดิมที่คุณใช้งานอยู่
-def init_connection():
-    scope = [
-            "https://spreadsheets.google.com/feeds",
-            "https://www.googleapis.com/auth/drive"
-        ]
+scope = [
+        "https://spreadsheets.google.com/feeds",
+        "https://www.googleapis.com/auth/drive"
+    ]
 # 2. ดึงข้อมูลจาก st.secrets ของ Streamlit Cloud
-if "gcp_service_account" in st.secrets:
-    creds_dict = dict(st.secrets["gcp_service_account"])
-    creds = Credentials.from_service_account_info(creds_dict, scopes=scope)
-else:
-    # เผื่อกรณีรันบนคอมตัวเอง (ถ้ายังอยากใช้ไฟล์ credentials.json แบบเดิม)
-    from oauth2client.service_account import ServiceAccountCredentials
-    creds = ServiceAccountCredentials.from_json_keyfile_name("credentials.json", scope)
+def init_connection():
+    if "gcp_service_account" in st.secrets:
+        creds_dict = dict(st.secrets["gcp_service_account"])
+        creds = Credentials.from_service_account_info(creds_dict, scopes=scope)
+    else:
+        # เผื่อกรณีรันบนคอมตัวเอง (ถ้ายังอยากใช้ไฟล์ credentials.json แบบเดิม)
+        from oauth2client.service_account import ServiceAccountCredentials
+        creds = ServiceAccountCredentials.from_json_keyfile_name("credentials.json", scope)
 
-client = gspread.authorize(creds)
+    client = gspread.authorize(creds)
 
 # เชื่อมต่อฐานข้อมูล
 try:
