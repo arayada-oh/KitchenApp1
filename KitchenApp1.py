@@ -119,7 +119,7 @@ elif menu == "🔍 ค้นหาวัตถุดิบ":
     else:
         st.warning("ไม่พบข้อมูลในระบบ")
 
-# ==========================================
+# # ==========================================
 # 🛒 หน้าเช็คของทั้งหมด & ตะกร้าสินค้า
 # ==========================================
 elif menu == "🛒 รายการที่ต้องซื้อ (Shopping Cart)":
@@ -129,28 +129,51 @@ elif menu == "🛒 รายการที่ต้องซื้อ (Shopping
     
     with tab1:
         st.subheader("สถานะวัตถุดิบในครัว (คลิกเพิ่มลงตะกร้าหากของหมด)")
+        
         if not df_stock.empty:
-            for index, row in df_stock.iterrows():
-                c1, c2, c3, c4 = st.columns([3, 2, 2, 2])
-                with c1:
-                    st.write(f"**{row['วัตถุดิบ']}**")
-                    st.caption(f"หมวด: {row['Category']} | ที่เก็บ: {row['storage_zone']}")
-                with c2:
-                    st.write(f"เหลือ: {row['Stock']} {row['Unit']}")
-                with c3:
-                    if row['Stock'] > 0:
-                        st.markdown("✅ **มีของ**")
-                    else:
-                        st.markdown("❌ **หมดแล้ว!**")
-                with c4:
-                    item_id = str(row['ItemCode'])
-                    if st.button("➕ เพิ่มลงตะกร้า", key=f"add_{item_id}"):
-                        if item_id in st.session_state.shopping_cart:
-                            st.session_state.shopping_cart[item_id] += 1
+            # ดึงรายชื่อหมวดหมู่ทั้งหมดที่มีจริงในตารางแบบไม่ให้ซ้ำกัน
+            # (หรือจะใช้ลิสต์รายชื่อหมวดหมู่ตายตัวที่คุณเตรียมไว้ก็ได้ครับ)
+            available_categories = sorted(df_stock['Category'].dropna().unique().tolist())
+            
+            # เพิ่มตัวเลือก "ดูทั้งหมดทุกหมวด" เผื่ออยากดูรวม
+            category_options = ["🔍 ดูทุกหมวดหมู่"] + available_categories
+            
+            # Dropdown เลือกหมวดหมู่
+            selected_cat = st.selectbox("📌 เลือกหมวดหมู่เพื่อกรองรายการ:", category_options)
+            
+            st.divider()
+            
+            # กรองข้อมูลตามหมวดหมู่ที่เลือก
+            if selected_cat == "🔍 ดูทุกหมวดหมู่":
+                filtered_df = df_stock
+            else:
+                filtered_df = df_stock[df_stock['Category'] == selected_cat]
+            
+            # วนลูปแสดงเฉพาะรายการที่ถูกกรองแล้ว
+            if not filtered_df.empty:
+                for index, row in filtered_df.iterrows():
+                    c1, c2, c3, c4 = st.columns([3, 2, 2, 2])
+                    with c1:
+                        st.write(f"**{row['วัตถุดิบ']}**")
+                        st.caption(f"หมวด: {row['Category']} | ที่เก็บ: {row['storage_zone']}")
+                    with c2:
+                        st.write(f"เหลือ: {row['Stock']} {row['Unit']}")
+                    with c3:
+                        if row['Stock'] > 0:
+                            st.markdown("✅ **มีของ**")
                         else:
-                            st.session_state.shopping_cart[item_id] = 1
-                        st.success(f"เพิ่ม {row['วัตถุดิบ']} แล้ว")
-                st.divider()
+                            st.markdown("❌ **หมดแล้ว!**")
+                    with c4:
+                        item_id = str(row['ItemCode'])
+                        if st.button("➕ เพิ่ม", key=f"add_{item_id}"):
+                            if item_id in st.session_state.shopping_cart:
+                                st.session_state.shopping_cart[item_id] += 1
+                            else:
+                                st.session_state.shopping_cart[item_id] = 1
+                            st.success(f"เพิ่ม {row['วัตถุดิบ']} แล้ว")
+                    st.divider()
+            else:
+                st.info("ไม่พบรายการวัตถุดิบในหมวดหมู่นี้")
         else:
             st.info("ไม่มีข้อมูลสินค้า")
 
@@ -191,23 +214,17 @@ elif menu == "🛒 รายการที่ต้องซื้อ (Shopping
             with col_b2:
                 if st.button("✅ ยืนยันซื้อเสร็จสิ้น (เติมเข้าสต็อก)"):
                     for item_id, qty in st.session_state.shopping_cart.items():
-                        # ค้นหาแถวที่ตรงกับ ItemCode
                         idx = df_stock[df_stock['ItemCode'].astype(str) == str(item_id)].index
                         if not idx.empty:
-                            # แปลงค่าเดิมให้เป็นตัวเลข เพื่อป้องกัน Error บวกเลขไม่ได้
                             current_qty = float(df_stock.loc[idx, 'Stock'].values[0])
-                            
-                            # นำจำนวนที่ซื้อไปบวกเพิ่มเข้าไปใน Stock (ใช้คำว่า 'Stock' ตัว S ใหญ่ให้ตรงกัน)
                             df_stock.loc[idx, 'Stock'] = current_qty + float(qty)
                             
-                    # บันทึกข้อมูลทั้งหมดกลับขึ้น Google Sheets (ใช้ฟังก์ชัน append ที่เราเพิ่งแก้ไป)
                     update_sheet_data(df_stock)
-                    
-                    # ล้างตะกร้าหลังซื้อเสร็จ
                     st.session_state.shopping_cart.clear()
                     st.success("อัปเดตสต็อกเข้าคลังเรียบร้อยแล้ว!")
                     st.rerun()
-
+        else:
+            st.info("ยังไม่มีสินค้าในตะกร้า")
 # ==========================================
 # 📦 หน้าอัพเดตสต็อกสินค้า
 # ==========================================
