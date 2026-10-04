@@ -12,10 +12,10 @@ st.set_page_config(
 
 # 1. กำหนด Scope เดิมที่คุณใช้งานอยู่
 def init_connection():
-scope = [
-        "https://spreadsheets.google.com/feeds",
-        "https://www.googleapis.com/auth/drive"
-    ]
+    scope = [
+            "https://spreadsheets.google.com/feeds",
+            "https://www.googleapis.com/auth/drive"
+        ]
 # 2. ดึงข้อมูลจาก st.secrets ของ Streamlit Cloud
 if "gcp_service_account" in st.secrets:
     creds_dict = dict(st.secrets["gcp_service_account"])
