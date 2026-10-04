@@ -1,0 +1,250 @@
+import streamlit as st
+import pandas as pd
+import gspread
+from oauth2client.service_account import ServiceAccountCredentials
+
+# --- 1. ตั้งค่าหน้าเว็บ Streamlit ---
+st.set_page_config(
+    page_title="ระบบเช็คสต็อกของในครัว",
+    page_icon="🍳",
+    layout="wide"
+)
+
+# --- 2. ฟังก์ชันเชื่อมต่อ Google Sheets (ใช้ @st.cache_resource ช่วยจำค่าการเชื่อมต่อ) ---
+@st.cache_resource
+def init_connection():
+    scope = [
+        "https://spreadsheets.google.com/feeds",
+        "https://www.googleapis.com/auth/drive"
+    ]
+    # ตรวจสอบให้แน่ใจว่าไฟล์ credentials.json อยู่ในโฟลเดอร์เดียวกัน
+    creds = ServiceAccountCredentials.from_json_keyfile_name("credentials.json", scope)
+    client = gspread.authorize(creds)
+    return client
+
+# เชื่อมต่อฐานข้อมูล
+try:
+    client = init_connection()
+    # ชื่อไฟล์ Google Sheets ต้องตรงกับที่คุณสร้าง
+    SPREADSHEET_ID = "1-ecxPbmWEOClLpBbUVyRQW8iNNan9Lbk-s3oxwHoqC8"
+    sheet = client.open_by_key(SPREADSHEET_ID).worksheet("IV")
+except Exception as e:
+    st.error(f"⚠️ เกิดข้อผิดพลาดในการเชื่อมต่อ Google Sheets: {e}")
+    st.info("คำแนะนำ: ตรวจสอบว่าแชร์อีเมล Service Account ไปยัง Google Sheet หรือยัง และชื่อไฟล์ถูกต้องไหม")
+    st.stop()
+
+# ฟังก์ชันดึงข้อมูลแปลงเป็น DataFrame
+# ฟังก์ชันดึงข้อมูลแปลงเป็น DataFrame
+def load_data():
+    try:
+        data = sheet.get_all_records()
+        if not data:
+            # ถ้าตารางว่างเปล่า ให้คืนค่า DataFrame เปล่าที่มีหัวคอลัมน์เตรียมไว้
+            return pd.DataFrame(columns=['ItemCode', 'วัตถุดิบ','In Use', 'Stock', 'Unit', 'Price', 'storage_zone', 'storage_slot', 'Category'])
+        return pd.DataFrame(data)
+    except Exception as e:
+        st.error(f"⚠️ เกิดข้อผิดพลาดในการดึงข้อมูล (เช็คว่าแถวที่ 1 ใน Google Sheet มีหัวคอลัมน์ครบถ้วนหรือไม่): {e}")
+        return pd.DataFrame()
+
+# ฟังก์ชันอัพเดตข้อมูลกลับไปยัง Google Sheets
+def update_sheet_data(df):
+    try:
+        sheet.clear()
+        # แปลงข้อมูลทั้งหมดรวมหัวตารางให้อยู่ในรูป List พร้อมอัปเดต
+        set_data = [df.columns.values.tolist()] + df.values.tolist()
+        sheet.update(range_name='A1', values=set_data)
+    except Exception as e:
+        st.error(f"⚠️ เกิดข้อผิดพลาดในการบันทึกข้อมูลลง Google Sheets: {e}")
+
+# โหลดข้อมูลเก็บไว้ในตัวแปร
+df_stock = load_data()
+
+# --- 3. จัดการตะกร้าสินค้าใน Session State ---
+if 'shopping_cart' not in st.session_state:
+    st.session_state.shopping_cart = {}
+
+# --- 4. เมนูนำทางด้านข้าง (Sidebar) ---
+st.sidebar.title("🍳 เมนูจัดการครัว")
+menu = st.sidebar.radio(
+    "เลือกหน้าการใช้งาน:", 
+    ["🏠 หน้าหลัก", "🔍 ค้นหาวัตถุดิบ", "🛒 รายการที่ต้องซื้อ (Shopping Cart)", "📦 อัพเดตสต็อกสินค้า"]
+)
+
+# ==========================================
+# 🏠 หน้าหลัก (Home)
+# ==========================================
+if menu == "🏠 หน้าหลัก":
+    st.title("🏡 ยินดีต้อนรับสู่ระบบจัดการของในครัว")
+    st.write("เช็คสต็อกวัตถุดิบ ดูของหมด และวางแผนซื้อของเข้าบ้านได้ง่ายๆ ผ่านหน้าจอของคุณ")
+    
+    st.markdown("---")
+    st.subheader("📊 สรุปสถานะคลังสินค้าเบื้องต้น")
+    
+    if not df_stock.empty:
+        total_items = len(df_stock)
+        # เช็คสินค้าที่จำนวนน้อยกว่าหรือเท่ากับ 0
+        out_of_stock = len(df_stock[df_stock['Stock'] <= 0])
+        
+        col1, col2 = st.columns(2)
+        col1.metric("จำนวนวัตถุดิบทั้งหมด", f"{total_items} รายการ")
+        col2.metric("สินค้าที่หมด (ต้องซื้อ)", f"{out_of_stock} รายการ", delta=-out_of_stock, delta_color="inverse")
+    else:
+        st.warning("ยังไม่มีข้อมูลวัตถุดิบใน Google Sheets")
+
+# ==========================================
+# 🔍 หน้าค้นหาวัตถุดิบ
+# ==========================================
+elif menu == "🔍 ค้นหาวัตถุดิบ":
+    st.title("🔍 ค้นหาวัตถุดิบในครัว")
+    
+    search_query = st.text_input("พิมพ์ชื่อวัตถุดิบ หรือหมวดหมู่ที่ต้องการค้นหา:")
+    
+    if not df_stock.empty:
+        if search_query:
+            filtered_df = df_stock[
+                df_stock['วัตถุดิบ'].astype(str).str.contains(search_query, case=False, na=False) |
+                df_stock['Category'].astype(str).str.contains(search_query, case=False, na=False)
+            ]
+        else:
+            filtered_df = df_stock
+
+        st.dataframe(filtered_df, use_container_width=True)
+    else:
+        st.warning("ไม่พบข้อมูลในระบบ")
+
+# ==========================================
+# 🛒 หน้าเช็คของทั้งหมด & ตะกร้าสินค้า
+# ==========================================
+elif menu == "🛒 รายการที่ต้องซื้อ (Shopping Cart)":
+    st.title("🛒 เช็ครายการของ & ตะกร้าสินค้า")
+    
+    tab1, tab2 = st.tabs(["📦 รายการวัตถุดิบทั้งหมด", "🛍️ ตะกร้าสินค้า"])
+    
+    with tab1:
+        st.subheader("สถานะวัตถุดิบในครัว (คลิกเพิ่มลงตะกร้าหากของหมด)")
+        if not df_stock.empty:
+            for index, row in df_stock.iterrows():
+                c1, c2, c3, c4 = st.columns([3, 2, 2, 2])
+                with c1:
+                    st.write(f"**{row['วัตถุดิบ']}**")
+                    st.caption(f"หมวด: {row['Category']} | ที่เก็บ: {row['storage_zone']}")
+                with c2:
+                    st.write(f"เหลือ: {row['Stock']} {row['Unit']}")
+                with c3:
+                    if row['Stock'] > 0:
+                        st.markdown("✅ **มีของ**")
+                    else:
+                        st.markdown("❌ **หมดแล้ว!**")
+                with c4:
+                    item_id = str(row['ItemCode'])
+                    if st.button("➕ เพิ่มลงตะกร้า", key=f"add_{item_id}"):
+                        if item_id in st.session_state.shopping_cart:
+                            st.session_state.shopping_cart[item_id] += 1
+                        else:
+                            st.session_state.shopping_cart[item_id] = 1
+                        st.success(f"เพิ่ม {row['วัตถุดิบ']} แล้ว")
+                st.divider()
+        else:
+            st.info("ไม่มีข้อมูลสินค้า")
+
+    with tab2:
+        st.subheader("🛍️ รายการที่เลือกซื้อ (Shopping List)")
+        
+        if st.session_state.shopping_cart:
+            total_price = 0
+            for item_id, qty in list(st.session_state.shopping_cart.items()):
+                item_row = df_stock[df_stock['ItemCode'].astype(str) == str(item_id)]
+                if not item_row.empty:
+                    name = item_row.iloc[0]['วัตถุดิบ']
+                    price = float(item_row.iloc[0]['Price'])
+                    unit = item_row.iloc[0]['Stock']
+                    subtotal = price * qty
+                    total_price += subtotal
+                    
+                    col1, col2, col3, col4 = st.columns([3, 2, 2, 1])
+                    col1.write(f"**{name}**")
+                    
+                    # ปรับจำนวนในตะกร้า
+                    new_qty = col2.number_input(f"จำนวน ({unit})", min_value=1, value=qty, key=f"qty_{item_id}")
+                    st.session_state.shopping_cart[item_id] = new_qty
+                    
+                    col3.write(f"รวม: {price * new_qty:,.2f} ฿")
+                    
+                    if col4.button("🗑️", key=f"del_{item_id}"):
+                        del st.session_state.shopping_cart[item_id]
+                        st.rerun()
+            
+            st.markdown(f"### 💰 ยอดรวมทั้งหมด: **{total_price:,.2f} บาท**")
+            
+            col_b1, col_b2 = st.columns(2)
+            with col_b1:
+                if st.button("🧹 เคลียร์ตะกร้าทั้งหมด"):
+                    st.session_state.shopping_cart.clear()
+                    st.rerun()
+            with col_b2:
+                if st.button("✅ ยืนยันซื้อเสร็จสิ้น (เติมเข้าสต็อก)"):
+                    for item_id, qty in st.session_state.shopping_cart.items():
+                        # ค้นหาแถวที่ตรงกับ ItemCode
+                        idx = df_stock[df_stock['ItemCode'].astype(str) == str(item_id)].index
+                        if not idx.empty:
+                            # แปลงค่าเดิมให้เป็นตัวเลข เพื่อป้องกัน Error บวกเลขไม่ได้
+                            current_qty = float(df_stock.loc[idx, 'Stock'].values[0])
+                            
+                            # นำจำนวนที่ซื้อไปบวกเพิ่มเข้าไปใน Stock (ใช้คำว่า 'Stock' ตัว S ใหญ่ให้ตรงกัน)
+                            df_stock.loc[idx, 'Stock'] = current_qty + float(qty)
+                            
+                    # บันทึกข้อมูลทั้งหมดกลับขึ้น Google Sheets (ใช้ฟังก์ชัน append ที่เราเพิ่งแก้ไป)
+                    update_sheet_data(df_stock)
+                    
+                    # ล้างตะกร้าหลังซื้อเสร็จ
+                    st.session_state.shopping_cart.clear()
+                    st.success("อัปเดตสต็อกเข้าคลังเรียบร้อยแล้ว!")
+                    st.rerun()
+
+# ==========================================
+# 📦 หน้าอัพเดตสต็อกสินค้า
+# ==========================================
+elif menu == "📦 อัพเดตสต็อกสินค้า":
+    st.title("📦 อัพเดตสต็อกสินค้า")
+    st.write("แก้ไขจำนวนคงเหลือ ราคา หรือสถานที่จัดเก็บของวัตถุดิบ")
+    
+    if not df_stock.empty:
+        selected_item = st.selectbox(
+            "เลือกวัตถุดิบที่ต้องการแก้ไข:",
+            df_stock['ItemCode'].astype(str) + " - " + df_stock['วัตถุดิบ']
+        )
+        
+        if selected_item:
+            item_id_val = selected_item.split(" - ")[0]
+            item_row = df_stock[df_stock['ItemCode'].astype(str) == item_id_val].iloc[0]
+            
+            with st.form("update_form"):
+                # ใช้ชื่อคอลัมน์ให้ตรงเป๊ะ ('Stock', 'Price', 'storage_zone', 'storage_slot')
+                new_qty = st.number_input("จำนวนคงเหลือ (Stock)", value=float(item_row['Stock']) if pd.notna(item_row['Stock']) else 0.0, step=1.0)
+                new_price = st.number_input("ราคาต่อหน่วย (Price)", value=float(item_row['Price']) if pd.notna(item_row['Price']) else 0.0, step=1.0)
+                
+                # แก้ชื่อตัวพิมพ์เล็ก-ใหญ่ให้ตรงกับหัวคอลัมน์จริง ('storage_zone')
+                current_zone = str(item_row['storage_zone']) if 'storage_zone' in item_row and pd.notna(item_row['storage_zone']) else ""
+                new_location = st.text_input("โซนเก็บของ (storage_zone)", value=current_zone)
+                
+                # เพิ่มช่องสำหรับกรอกช่องย่อย (storage_slot) ด้วย เพื่อไม่ให้ข้อมูลหาย
+                current_slot = str(item_row['storage_slot']) if 'storage_slot' in item_row and pd.notna(item_row['storage_slot']) else ""
+                new_slot = st.text_input("ช่องย่อย/ชั้น (storage_slot)", value=current_slot)
+                
+                submitted = st.form_submit_button("💾 บันทึกการเปลี่ยนแปลง")
+                
+                if submitted:
+                    idx = df_stock[df_stock['ItemCode'].astype(str) == item_id_val].index
+                    
+                    # อัปเดตข้อมูลลงใน DataFrame ให้ครบทุกช่อง
+                    df_stock.loc[idx, 'Stock'] = new_qty
+                    df_stock.loc[idx, 'Price'] = new_price
+                    df_stock.loc[idx, 'storage_zone'] = new_location
+                    df_stock.loc[idx, 'storage_slot'] = new_slot
+                    
+              # เรียกใช้ฟังก์ชันอัปเดตข้อมูลกลับ Google Sheets
+                    update_sheet_data(df_stock)
+                    st.success("บันทึกข้อมูลลง Google Sheets สำเร็จ!")
+                    st.rerun()
+    else:
+        st.warning("ไม่มีข้อมูลในระบบ")
