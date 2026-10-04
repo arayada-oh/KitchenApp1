@@ -11,6 +11,7 @@ st.set_page_config(
 )
 
 # 1. กำหนด Scope เดิมที่คุณใช้งานอยู่
+def init_connection():
 scope = [
         "https://spreadsheets.google.com/feeds",
         "https://www.googleapis.com/auth/drive"
