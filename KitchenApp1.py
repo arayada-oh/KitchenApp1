@@ -331,9 +331,13 @@ def check_and_cost_recipes(recipe_df, ig_recipe_df, stock_df):
       # ดึงค่าจากชีท IV
       current_stock = float(stock_row['Stock'].values[0] or 0)
       price_per_unit = float(stock_row['Price'].values[0] or 0)
-      total_volume_per_unit = float(
-          stock_row.get('Total_Volume_Per_Unit', 1).values[0] or 1
-      )
+      # โค้ดที่แก้แล้ว (ดึงค่าแบบปลอดภัย ป้องกัน Error int object has no attribute values)
+    try:
+        total_volume_per_unit = float(
+            stock_row['Total_Volume_Per_Unit'].values[0] or 1
+        )
+        except Exception:
+        total_volume_per_unit = 1.0
 
       # คำนวณต้นทุนต่อหน่วยย่อย
       cost_per_base_unit = (
