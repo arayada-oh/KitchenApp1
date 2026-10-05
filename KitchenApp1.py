@@ -34,7 +34,9 @@ try:
     client = init_connection()
     # ชื่อไฟล์ Google Sheets ต้องตรงกับที่คุณสร้าง
     SPREADSHEET_ID = "1-ecxPbmWEOClLpBbUVyRQW8iNNan9Lbk-s3oxwHoqC8"
-    sheet = client.open_by_key(SPREADSHEET_ID).worksheet("IV")
+    spreadsheet = client.open_by_key(SPREADSHEET_ID)
+   #ชีทคลังวัตถุดิบหลัก 
+    sheet = spreadsheet.worksheet("IV")
 except Exception as e:
     st.error(f"⚠️ เกิดข้อผิดพลาดในการเชื่อมต่อ Google Sheets: {e}")
     st.info("คำแนะนำ: ตรวจสอบว่าแชร์อีเมล Service Account ไปยัง Google Sheet หรือยัง และชื่อไฟล์ถูกต้องไหม")
@@ -274,3 +276,113 @@ elif menu == "📦 อัพเดตสต็อกสินค้า":
                     st.rerun()
     else:
         st.warning("ไม่มีข้อมูลในระบบ")
+
+ # --- 1. ฟังก์ชันโหลดข้อมูลสูตรอาหารแบบไม่ใช้ Cache ---
+
+
+def load_recipes_data():
+  try:
+    recipe_df = pd.DataFrame(spreadsheet.worksheet('Recipe').get_all_records())
+    ig_recipe_df = pd.DataFrame(
+        spreadsheet.worksheet('IG_Recipe').get_all_records()
+    )
+    return recipe_df, ig_recipe_df
+  except Exception as e:
+    st.error(f'เกิดข้อผิดพลาดในการโหลดข้อมูลสูตรอาหาร: {e}')
+    return pd.DataFrame(), pd.DataFrame() 
+
+st.markdown('---')
+st.subheader('🍳 ระบบแนะนำเมนูอาหารและต้นทุนจากวัตถุดิบในตู้')
+
+# 1. ปุ่มสำหรับกดโหลดหรือรีเฟรชข้อมูลสูตรอาหาร
+if st.button('🔄 โหลด/อัปเดตข้อมูลเมนูอาหาร'):
+  st.rerun()
+
+# 2. ดึงข้อมูลจาก Google Sheets (สมมติว่าตัวแปร sheet คือการเชื่อมต่อ Google Sheets ของคุณโอ๋อยู่แล้ว)
+# หมายเหตุ: ถ้าในโค้ดเดิมของคุณโอ๋ใช้ชื่อตัวแปรเชื่อมต่อชีทเป็นชื่ออื่น สามารถปรับเปลี่ยนตรงนี้ได้เลยค่ะ
+try:
+  recipe_df, ig_recipe_df = load_recipes_data(sheet)
+  stock_df = load_data(sheet)  # ฟังก์ชันโหลดสต็อกเดิม (ชีท IV)
+
+  if recipe_df.empty:
+    st.info(
+        '💡 ยังไม่พบข้อมูลในชีท Recipe ลองตรวจสอบชื่อชีทหรือเพิ่มข้อมูลเมนูก่อนนะจ๊ะ'
+    )
+  else:
+    # เรียกใช้ฟังก์ชันตรวจสอบความพร้อมและต้นทุนที่เราเขียนไว้
+    menu_results = check_and_cost_recipes(
+        recipe_df, ig_recipe_df, stock_df
+    )
+
+    # แบ่งหมวดหมู่การแสดงผลเพื่อให้ดูง่าย
+    ready_menus = [m for m in menu_results if m['Ready']]
+    not_ready_menus = [m for m in menu_results if not m['Ready']]
+
+    # สร้างเป็นแท็บย่อยในหน้าเมนูอีกทีเพื่อให้ไม่รกตา
+    tab1, tab2 = st.tabs([
+        f'🟢 ทำได้เลย ({len(ready_menus)} เมนู)',
+        f'🟡 วัตถุดิบไม่ครบ ({len(not_ready_menus)} เมนู)',
+    ])
+
+    # --- แท็บที่ 1: เมนูที่ทำได้เลยทันที ---
+    with tab1:
+      if not ready_menus:
+        st.write('😢 ตอนนี้ยังไม่มีเมนูไหนที่วัตถุดิบครบถ้วนเลย ลองเช็กสต็อกดูนะ')
+      else:
+        for menu in ready_menus:
+          with st.container(border=True):
+            col1, col2 = st.columns([3, 1])
+            with col1:
+              st.markdown(
+                  f"### ✅ {menu['Recipe_Name']}"
+                  f" <small>({menu['Recipe_Group']})</small>",
+                  unsafe_allow_html=True,
+              )
+              st.caption(f"รหัสเมนู: {menu['Recipe_ID']}")
+            with col2:
+              st.metric(
+                  label='ต้นทุนรวม', value=f"฿{menu['Total_Cost']:.2f}"
+              )
+            st.success('วัตถุดิบครบถ้วน พร้อมทำทานหรือขายแล้ว!')
+
+    # --- แท็บที่ 2: เมนูที่ของยังขาดอยู่ ---
+    with tab2:
+      if not not_ready_menus:
+        st.write('🎉 ยอดเยี่ยม! ทุกเมนูในระบบวัตถุดิบครบพร้อมทำได้หมดเลย')
+      else:
+        for menu in not_ready_menus:
+          with st.container(border=True):
+            col1, col2 = st.columns([3, 1])
+            with col1:
+              st.markdown(
+                  f"### ⚠️ {menu['Recipe_Name']}"
+                  f" <small>({menu['Recipe_Group']})</small>",
+                  unsafe_allow_html=True,
+              )
+              st.caption(f"รหัสเมนู: {menu['Recipe_ID']}")
+            with col2:
+              st.metric(
+                  label='ต้นทุนโดยประมาณ', value=f"฿{menu['Total_Cost']:.2f}"
+              )
+
+            # แสดงรายการวัตถุดิบที่ยังขาด
+            st.warning('ขาดวัตถุดิบดังนี้:')
+            for item in menu['Missing_Items']:
+              if 'Reason' in item:
+                st.text(
+                    f"• {item['วัตถุดิบ']} ({item['Item_Code']}) —"
+                    f" {item['Reason']}"
+                )
+              else:
+                need = item.get('Need', 0)
+                current = item.get('Current_Stock', 0)
+                unit = item.get('Unit', '')
+                st.text(
+                    f"• {item['วัตถุดิบ']}: ต้องการ {need} {unit}"
+                    f" (ในตู้มี {current} {unit})"
+                )
+
+except Exception as e:
+  st.error(
+      f'เกิดข้อผิดพลาดในการแสดงผลหน้าเมนูอาหาร กรุณาตรวจสอบโค้ดหรือชีท: {e}'
+  )      
