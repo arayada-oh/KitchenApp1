@@ -301,8 +301,8 @@ if st.button('🔄 โหลด/อัปเดตข้อมูลเมนู
 # 2. ดึงข้อมูลจาก Google Sheets (สมมติว่าตัวแปร sheet คือการเชื่อมต่อ Google Sheets ของคุณโอ๋อยู่แล้ว)
 # หมายเหตุ: ถ้าในโค้ดเดิมของคุณโอ๋ใช้ชื่อตัวแปรเชื่อมต่อชีทเป็นชื่ออื่น สามารถปรับเปลี่ยนตรงนี้ได้เลยค่ะ
 try:
-  recipe_df, ig_recipe_df = load_recipes_data(sheet)
-  stock_df = load_data(sheet)  # ฟังก์ชันโหลดสต็อกเดิม (ชีท IV)
+  recipe_df, ig_recipe_df = load_recipes_data()
+  stock_df = load_data()  # ฟังก์ชันโหลดสต็อกเดิม (ชีท IV)
 
   if recipe_df.empty:
     st.info(
