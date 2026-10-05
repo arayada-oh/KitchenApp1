@@ -336,7 +336,7 @@ def check_and_cost_recipes(recipe_df, ig_recipe_df, stock_df):
         total_volume_per_unit = float(
             stock_row['Total_Volume_Per_Unit'].values[0] or 1
         )
-        except Exception:
+        except:
         total_volume_per_unit = 1.0
 
       # คำนวณต้นทุนต่อหน่วยย่อย
