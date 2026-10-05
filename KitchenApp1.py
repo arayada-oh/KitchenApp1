@@ -340,6 +340,10 @@ def check_and_cost_recipes(recipe_df, ig_recipe_df, stock_df):
       except Exception:
         total_volume_per_unit = 1.0
 
+      # *** จุดที่แก้ไข: แปลงสต็อกหน่วยใหญ่ให้เป็นหน่วยย่อย (เช่น ขวด -> มล.) ก่อนนำไปเช็ก ***
+      # ถ้า Total_Volume_Per_Unit มีค่ามากกว่า 1 ให้คูณเข้าไปเพื่อให้เป็นหน่วยเดียวกันกับสูตร
+      total_available_in_base_unit = raw_stock * total_volume_per_unit
+
       # คำนวณต้นทุนต่อหน่วยย่อย
       cost_per_base_unit = (
           price_per_unit / total_volume_per_unit
@@ -349,14 +353,16 @@ def check_and_cost_recipes(recipe_df, ig_recipe_df, stock_df):
       ingredient_cost = qty_need * cost_per_base_unit
       total_recipe_cost += ingredient_cost
 
-      # เช็กสต็อกว่าเพียงพอมั้ย
-      if current_stock < qty_need:
+      # เช็กสต็อกว่าเพียงพอมั้ย (เทียบด้วยหน่วยย่อยที่แปลงแล้ว)
+      if total_available_in_base_unit < qty_need:
         ready_to_cook = False
         missing_items.append({
             'Item_Code': item_code,
             'วัตถุดิบ': item_name,
             'Need': qty_need,
-            'Current_Stock': current_stock,
+            'Current_Stock': (
+                total_available_in_base_unit
+            ),  # แสดงผลเป็นหน่วยย่อยให้เข้าใจง่าย
             'Unit': usage_unit,
         })
 
