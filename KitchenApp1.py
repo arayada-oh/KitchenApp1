@@ -386,3 +386,50 @@ except Exception as e:
   st.error(
       f'เกิดข้อผิดพลาดในการแสดงผลหน้าเมนูอาหาร กรุณาตรวจสอบโค้ดหรือชีท: {e}'
   )      
+
+ # --- ส่วนแสดงผลหน้าจอ เมนูอาหารและต้นทุน (วางไว้ท้ายสุดของไฟล์) ---
+st.markdown("---")
+st.subheader("🍳 ระบบแนะนำเมนูอาหารและต้นทุนจากวัตถุดิบในตู้")
+
+try:
+    # โหลดข้อมูล
+    recipe_df, ig_recipe_df = load_recipes_data()
+    stock_df = load_data()
+    
+    if recipe_df.empty:
+        st.info("💡 ยังไม่พบข้อมูลในชีท Recipe ลองตรวจสอบชื่อชีทหรือเพิ่มข้อมูลเมนูก่อนนะจ๊ะ")
+    else:
+        # เรียกฟังก์ชันคำนวณที่เราเขียนไว้
+        menu_results = check_and_cost_recipes(recipe_df, ig_recipe_df, stock_df)
+        
+        ready_menus = [m for m in menu_results if m['Ready']]
+        not_ready_menus = [m for m in menu_results if not m['Ready']]
+        
+        # สร้างแท็บแสดงผล
+        tab1, tab2 = st.tabs([f"🟢 ทำได้เลย ({len(ready_menus)} เมนู)", f"🟡 วัตถุดิบไม่ครบ ({len(not_ready_menus)} เมนู)"])
+        
+        with tab1:
+            if not ready_menus:
+                st.write("😢 ตอนนี้ยังไม่มีเมนูไหนที่วัตถุดิบครบถ้วนเลย")
+            else:
+                for menu in ready_menus:
+                    with st.container(border=True):
+                        st.markdown(f"### ✅ {menu['Recipe_Name']} <small>({menu['Recipe_Group']})</small>", unsafe_allow_html=True)
+                        st.success(f"วัตถุดิบครบถ้วน! | ต้นทุนรวม: ฿{menu['Total_Cost']:.2f}")
+                        
+        with tab2:
+            if not not_ready_menus:
+                st.write("🎉 ยอดเยี่ยม! ทุกเมนูวัตถุดิบครบพร้อมทำได้หมดเลย")
+            else:
+                for menu in not_ready_menus:
+                    with st.container(border=True):
+                        st.markdown(f"### ⚠️ {menu['Recipe_Name']} <small>({menu['Recipe_Group']})</small>", unsafe_allow_html=True)
+                        st.warning(f"ของไม่พอ | ต้นทุนโดยประมาณ: ฿{menu['Total_Cost']:.2f}")
+                        for item in menu['Missing_Items']:
+                            if 'Reason' in item:
+                                st.text(f"• {item['วัตถุดิบ']} — {item['Reason']}")
+                            else:
+                                st.text(f"• {item['วัตถุดิบ']}: ต้องการ {item.get('Need')} (มีในตู้ {item.get('Current_Stock')})")
+
+except Exception as e:
+    st.error(f"เกิดข้อผิดพลาดในการแสดงผลหน้าเมนู: {e}") 
