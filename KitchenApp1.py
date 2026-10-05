@@ -291,6 +291,81 @@ def load_recipes_data():
     st.error(f'เกิดข้อผิดพลาดในการโหลดข้อมูลสูตรอาหาร: {e}')
     return pd.DataFrame(), pd.DataFrame() 
 
+ # --- ฟังก์ชันตรวจสอบความพร้อมและคำนวณต้นทุนเมนูอาหาร ---
+def check_and_cost_recipes(recipe_df, ig_recipe_df, stock_df):
+  recipe_results = []
+
+  if recipe_df.empty or ig_recipe_df.empty or stock_df.empty:
+    return recipe_results
+
+  for _, recipe in recipe_df.iterrows():
+    r_id = recipe['Recipe_ID']
+    r_name = recipe['Recipe_Name']
+    r_group = recipe['Recipe_Group']
+
+    # ดึงส่วนผสมของเมนูนี้
+    ingredients = ig_recipe_df[ig_recipe_df['Recipe_ID'] == r_id]
+
+    missing_items = []
+    ready_to_cook = True
+    total_recipe_cost = 0.0
+
+    for _, ing in ingredients.iterrows():
+      item_code = ing['Item_Code']
+      item_name = ing['วัตถุดิบ']
+      qty_need = float(ing['QTY_Need'] or 0)
+      usage_unit = str(ing.get('Usage_Unit', ''))
+
+      # ค้นหาข้อมูลสต็อกและราคาจากชีท IV (เทียบด้วย ItemCode)
+      stock_row = stock_df[stock_df['ItemCode'] == item_code]
+
+      if stock_row.empty:
+        ready_to_cook = False
+        missing_items.append({
+            'Item_Code': item_code,
+            'วัตถุดิบ': item_name,
+            'Reason': 'ไม่พบรายการนี้ในสต็อก (IV)',
+        })
+        continue
+
+      # ดึงค่าจากชีท IV
+      current_stock = float(stock_row['Stock'].values[0] or 0)
+      price_per_unit = float(stock_row['Price'].values[0] or 0)
+      total_volume_per_unit = float(
+          stock_row.get('Total_Volume_Per_Unit', 1).values[0] or 1
+      )
+
+      # คำนวณต้นทุนต่อหน่วยย่อย
+      cost_per_base_unit = (
+          price_per_unit / total_volume_per_unit
+          if total_volume_per_unit > 0
+          else 0
+      )
+      ingredient_cost = qty_need * cost_per_base_unit
+      total_recipe_cost += ingredient_cost
+
+      # เช็กสต็อกว่าเพียงพอมั้ย
+      if current_stock < qty_need:
+        ready_to_cook = False
+        missing_items.append({
+            'Item_Code': item_code,
+            'วัตถุดิบ': item_name,
+            'Need': qty_need,
+            'Current_Stock': current_stock,
+            'Unit': usage_unit,
+        })
+
+    recipe_results.append({
+        'Recipe_ID': r_id,
+        'Recipe_Name': r_name,
+        'Recipe_Group': r_group,
+        'Ready': ready_to_cook,
+        'Total_Cost': total_recipe_cost,
+        'Missing_Items': missing_items,
+    })
+
+  return recipe_results 
+
 st.markdown('---')
 st.subheader('🍳 ระบบแนะนำเมนูอาหารและต้นทุนจากวัตถุดิบในตู้')
 
