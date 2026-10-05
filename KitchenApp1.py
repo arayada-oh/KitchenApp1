@@ -329,7 +329,7 @@ def check_and_cost_recipes(recipe_df, ig_recipe_df, stock_df):
         continue
 
       # ดึงค่าจากชีท IV อย่างปลอดภัย
-      current_stock = float(stock_row['Stock'].values[0] or 0)
+      raw_stock = float(stock_row['Stock'].values[0] or 0)
       price_per_unit = float(stock_row['Price'].values[0] or 0)
 
       total_volume_per_unit = 1.0
@@ -340,8 +340,7 @@ def check_and_cost_recipes(recipe_df, ig_recipe_df, stock_df):
       except Exception:
         total_volume_per_unit = 1.0
 
-      # *** จุดที่แก้ไข: แปลงสต็อกหน่วยใหญ่ให้เป็นหน่วยย่อย (เช่น ขวด -> มล.) ก่อนนำไปเช็ก ***
-      # ถ้า Total_Volume_Per_Unit มีค่ามากกว่า 1 ให้คูณเข้าไปเพื่อให้เป็นหน่วยเดียวกันกับสูตร
+      # แปลงสต็อกหน่วยใหญ่ให้เป็นหน่วยย่อย (เช่น ขวด -> มล.) ก่อนนำไปเช็ก
       total_available_in_base_unit = raw_stock * total_volume_per_unit
 
       # คำนวณต้นทุนต่อหน่วยย่อย
@@ -360,9 +359,7 @@ def check_and_cost_recipes(recipe_df, ig_recipe_df, stock_df):
             'Item_Code': item_code,
             'วัตถุดิบ': item_name,
             'Need': qty_need,
-            'Current_Stock': (
-                total_available_in_base_unit
-            ),  # แสดงผลเป็นหน่วยย่อยให้เข้าใจง่าย
+            'Current_Stock': total_available_in_base_unit,
             'Unit': usage_unit,
         })
 
