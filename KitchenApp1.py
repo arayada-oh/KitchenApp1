@@ -381,3 +381,168 @@ st.subheader('🍳 ระบบแนะนำเมนูอาหารแล�
 if st.button('🔄 โหลด/อัปเดตข้อมูลเมนูอาหาร'):
   st.rerun()
 
+# 2. ดึงข้อมูลจาก Google Sheets (สมมติว่าตัวแปร sheet คือการเชื่อมต่อ Google Sheets ของคุณโอ๋อยู่แล้ว)
+# หมายเหตุ: ถ้าในโค้ดเดิมของคุณโอ๋ใช้ชื่อตัวแปรเชื่อมต่อชีทเป็นชื่ออื่น สามารถปรับเปลี่ยนตรงนี้ได้เลยค่ะ
+try:
+  recipe_df, ig_recipe_df = load_recipes_data()
+  stock_df = load_data()  # ฟังก์ชันโหลดสต็อกเดิม (ชีท IV)
+
+  if recipe_df.empty:
+    st.info(
+        '💡 ยังไม่พบข้อมูลในชีท Recipe ลองตรวจสอบชื่อชีทหรือเพิ่มข้อมูลเมนูก่อนนะจ๊ะ'
+    )
+  else:
+    # เรียกใช้ฟังก์ชันตรวจสอบความพร้อมและต้นทุนที่เราเขียนไว้
+    menu_results = check_and_cost_recipes(
+        recipe_df, ig_recipe_df, stock_df
+    )
+
+    # แบ่งหมวดหมู่การแสดงผลเพื่อให้ดูง่าย
+    ready_menus = [m for m in menu_results if m['Ready']]
+    not_ready_menus = [m for m in menu_results if not m['Ready']]
+
+    # สร้างเป็นแท็บย่อยในหน้าเมนูอีกทีเพื่อให้ไม่รกตา
+    tab1, tab2 = st.tabs([
+        f'🟢 ทำได้เลย ({len(ready_menus)} เมนู)',
+        f'🟡 วัตถุดิบไม่ครบ ({len(not_ready_menus)} เมนู)',
+    ])
+
+    with tab1:
+          if not ready_menus:
+            st.write("😢 ตอนนี้ยังไม่มีเมนูไหนที่วัตถุดิบครบถ้วนเลย")
+          else:
+            st.markdown(
+                "💡 **คลิกเลือกเมนูที่ต้องการ เพื่อดูรายการเครื่องปรุงและเตรียมของได้เลยจ้า:**"
+            )
+
+            # สร้างรายชื่อเมนูทั้งหมดที่พร้อมทำมาทำเป็น Dropdown (หรือใช้ปุ่มกดก็ได้)
+            # เพื่อให้เลือกดูทีละเมนูได้อย่างสบายตา
+            menu_names = [m['Recipe_Name'] for m in ready_menus]
+            selected_menu_name = st.selectbox(
+                '🍳 เลือกเมนูเพื่อดูรายการเตรียมของ:', menu_names, key='ready_menu_select'
+            )
+
+            # ค้นหาข้อมูลของเมนูที่ถูกเลือก
+            selected_menu = next(
+                (m for m in ready_menus if m['Recipe_Name'] == selected_menu_name),
+                None,
+            )
+
+            if selected_menu:
+              with st.container(border=True):
+                st.markdown(
+                    f"### 📋 รายการเตรียมของสำหรับ: {selected_menu['Recipe_Name']}"
+                    f" <small>({selected_menu['Recipe_Group']})</small>",
+                    unsafe_allow_html=True,
+                )
+                st.success(
+                    f"✅ วัตถุดิบครบถ้วนพร้อมทำ! | ต้นทุนรวมเมนูนี้:"
+                    f" ฿{selected_menu['Total_Cost']:.2f}"
+                )
+
+                st.markdown('#### 🛒 รายการวัตถุดิบที่ต้องเตรียม:')
+
+                # ดึงส่วนผสมของเมนูนี้จาก ig_recipe_df เพื่อเอามาโชว์ปริมาณที่ต้องใช้
+                r_id = selected_menu['Recipe_ID']
+                menu_ingredients = ig_recipe_df[ig_recipe_df['Recipe_ID'] == r_id]
+
+                # วนลูปแสดงรายการเครื่องปรุงแต่ละตัว
+                for _, ing in menu_ingredients.iterrows():
+                  item_name = ing['วัตถุดิบ']
+                  qty_need = ing['QTY_Need']
+                  usage_unit = ing.get('Usage_Unit', '')
+
+                  # ติ๊กถูกเก๋ ๆ ให้ความรู้สึกเหมือนเช็กลิสต์รายการเตรียมของ
+                  st.checkbox(
+                      f"**{item_name}** — ใช้จำนวน **{qty_need} {usage_unit}**",
+                      key=f"check_{r_id}_{ing['Item_Code']}",
+                  )
+
+    # --- แท็บที่ 2: เมนูที่ของยังขาดอยู่ ---
+    with tab2:
+      if not not_ready_menus:
+        st.write('🎉 ยอดเยี่ยม! ทุกเมนูในระบบวัตถุดิบครบพร้อมทำได้หมดเลย')
+      else:
+        for menu in not_ready_menus:
+          with st.container(border=True):
+            col1, col2 = st.columns([3, 1])
+            with col1:
+              st.markdown(
+                  f"### ⚠️ {menu['Recipe_Name']}"
+                  f" <small>({menu['Recipe_Group']})</small>",
+                  unsafe_allow_html=True,
+              )
+              st.caption(f"รหัสเมนู: {menu['Recipe_ID']}")
+            with col2:
+              st.metric(
+                  label='ต้นทุนโดยประมาณ', value=f"฿{menu['Total_Cost']:.2f}"
+              )
+
+            # แสดงรายการวัตถุดิบที่ยังขาด
+            st.warning('ขาดวัตถุดิบดังนี้:')
+            for item in menu['Missing_Items']:
+              if 'Reason' in item:
+                st.text(
+                    f"• {item['วัตถุดิบ']} ({item['Item_Code']}) —"
+                    f" {item['Reason']}"
+                )
+              else:
+                need = item.get('Need', 0)
+                current = item.get('Current_Stock', 0)
+                unit = item.get('Unit', '')
+                st.text(
+                    f"• {item['วัตถุดิบ']}: ต้องการ {need} {unit}"
+                    f" (ในตู้มี {current} {unit})"
+                )
+
+except Exception as e:
+  st.error(
+      f'เกิดข้อผิดพลาดในการแสดงผลหน้าเมนูอาหาร กรุณาตรวจสอบโค้ดหรือชีท: {e}'
+  )      
+
+ # --- ส่วนแสดงผลหน้าจอ เมนูอาหารและต้นทุน (วางไว้ท้ายสุดของไฟล์) ---
+st.markdown("---")
+st.subheader("🍳 ระบบแนะนำเมนูอาหารและต้นทุนจากวัตถุดิบในตู้")
+
+try:
+    # โหลดข้อมูล
+    recipe_df, ig_recipe_df = load_recipes_data()
+    stock_df = load_data()
+    
+    if recipe_df.empty:
+        st.info("💡 ยังไม่พบข้อมูลในชีท Recipe ลองตรวจสอบชื่อชีทหรือเพิ่มข้อมูลเมนูก่อนนะจ๊ะ")
+    else:
+        # เรียกฟังก์ชันคำนวณที่เราเขียนไว้
+        menu_results = check_and_cost_recipes(recipe_df, ig_recipe_df, stock_df)
+        
+        ready_menus = [m for m in menu_results if m['Ready']]
+        not_ready_menus = [m for m in menu_results if not m['Ready']]
+        
+        # สร้างแท็บแสดงผล
+        tab1, tab2 = st.tabs([f"🟢 ทำได้เลย ({len(ready_menus)} เมนู)", f"🟡 วัตถุดิบไม่ครบ ({len(not_ready_menus)} เมนู)"])
+        
+        with tab1:
+            if not ready_menus:
+                st.write("😢 ตอนนี้ยังไม่มีเมนูไหนที่วัตถุดิบครบถ้วนเลย")
+            else:
+                for menu in ready_menus:
+                    with st.container(border=True):
+                        st.markdown(f"### ✅ {menu['Recipe_Name']} <small>({menu['Recipe_Group']})</small>", unsafe_allow_html=True)
+                        st.success(f"วัตถุดิบครบถ้วน! | ต้นทุนรวม: ฿{menu['Total_Cost']:.2f}")
+                        
+        with tab2:
+            if not not_ready_menus:
+                st.write("🎉 ยอดเยี่ยม! ทุกเมนูวัตถุดิบครบพร้อมทำได้หมดเลย")
+            else:
+                for menu in not_ready_menus:
+                    with st.container(border=True):
+                        st.markdown(f"### ⚠️ {menu['Recipe_Name']} <small>({menu['Recipe_Group']})</small>", unsafe_allow_html=True)
+                        st.warning(f"ของไม่พอ | ต้นทุนโดยประมาณ: ฿{menu['Total_Cost']:.2f}")
+                        for item in menu['Missing_Items']:
+                            if 'Reason' in item:
+                                st.text(f"• {item['วัตถุดิบ']} — {item['Reason']}")
+                            else:
+                                st.text(f"• {item['วัตถุดิบ']}: ต้องการ {item.get('Need')} (มีในตู้ {item.get('Current_Stock')})")
+
+except Exception as e:
+    st.error(f"เกิดข้อผิดพลาดในการแสดงผลหน้าเมนู: {e}") 
