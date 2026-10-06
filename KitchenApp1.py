@@ -277,139 +277,107 @@ elif menu == "📦 อัพเดตสต็อกสินค้า":
     else:
         st.warning("ไม่มีข้อมูลในระบบ")
 
+ # --- 1. ฟังก์ชันโหลดข้อมูลสูตรอาหารแบบไม่ใช้ Cache ---
 
-# 2. ดึงข้อมูลจาก Google Sheets (สมมติว่าตัวแปร sheet คือการเชื่อมต่อ Google Sheets ของคุณโอ๋อยู่แล้ว)
-# หมายเหตุ: ถ้าในโค้ดเดิมของคุณโอ๋ใช้ชื่อตัวแปรเชื่อมต่อชีทเป็นชื่ออื่น สามารถปรับเปลี่ยนตรงนี้ได้เลยค่ะ
-try:
-  recipe_df, ig_recipe_df = load_recipes_data()
-  stock_df = load_data()  # ฟังก์ชันโหลดสต็อกเดิม (ชีท IV)
 
-  if recipe_df.empty:
-    st.info(
-        '💡 ยังไม่พบข้อมูลในชีท Recipe ลองตรวจสอบชื่อชีทหรือเพิ่มข้อมูลเมนูก่อนนะจ๊ะ'
+def load_recipes_data():
+  try:
+    recipe_df = pd.DataFrame(spreadsheet.worksheet('Recipe').get_all_records())
+    ig_recipe_df = pd.DataFrame(
+        spreadsheet.worksheet('IG_Recipe').get_all_records()
     )
-  else:
-    # เรียกใช้ฟังก์ชันตรวจสอบความพร้อมและต้นทุนที่เราเขียนไว้
-    menu_results = check_and_cost_recipes(
-        recipe_df, ig_recipe_df, stock_df
-    )
+    return recipe_df, ig_recipe_df
+  except Exception as e:
+    st.error(f'เกิดข้อผิดพลาดในการโหลดข้อมูลสูตรอาหาร: {e}')
+    return pd.DataFrame(), pd.DataFrame() 
 
-    # แบ่งหมวดหมู่การแสดงผลเพื่อให้ดูง่าย
-    ready_menus = [m for m in menu_results if m['Ready']]
-    not_ready_menus = [m for m in menu_results if not m['Ready']]
+ # --- ฟังก์ชันตรวจสอบความพร้อมและคำนวณต้นทุนเมนูอาหาร ---
+def check_and_cost_recipes(recipe_df, ig_recipe_df, stock_df):
+  recipe_results = []
 
-    # สร้างเป็นแท็บย่อยในหน้าเมนูอีกทีเพื่อให้ไม่รกตา
-    tab1, tab2 = st.tabs([
-        f'🟢 ทำได้เลย ({len(ready_menus)} เมนู)',
-        f'🟡 วัตถุดิบไม่ครบ ({len(not_ready_menus)} เมนู)',
-    ])
+  if recipe_df.empty or ig_recipe_df.empty or stock_df.empty:
+    return recipe_results
 
-    # --- แท็บที่ 1: เมนูที่ทำได้เลยทันที ---
-    with tab1:
-      if not ready_menus:
-        st.write('😢 ตอนนี้ยังไม่มีเมนูไหนที่วัตถุดิบครบถ้วนเลย ลองเช็กสต็อกดูนะ')
-      else:
-        for menu in ready_menus:
-          with st.container(border=True):
-            col1, col2 = st.columns([3, 1])
-            with col1:
-              st.markdown(
-                  f"### ✅ {menu['Recipe_Name']}"
-                  f" <small>({menu['Recipe_Group']})</small>",
-                  unsafe_allow_html=True,
-              )
-              st.caption(f"รหัสเมนู: {menu['Recipe_ID']}")
-            with col2:
-              st.metric(
-                  label='ต้นทุนรวม', value=f"฿{menu['Total_Cost']:.2f}"
-              )
-            st.success('วัตถุดิบครบถ้วน พร้อมทำทานหรือขายแล้ว!')
+  for _, recipe in recipe_df.iterrows():
+    r_id = recipe['Recipe_ID']
+    r_name = recipe['Recipe_Name']
+    r_group = recipe['Recipe_Group']
 
-    # --- แท็บที่ 2: เมนูที่ของยังขาดอยู่ ---
-    with tab2:
-      if not not_ready_menus:
-        st.write('🎉 ยอดเยี่ยม! ทุกเมนูในระบบวัตถุดิบครบพร้อมทำได้หมดเลย')
-      else:
-        for menu in not_ready_menus:
-          with st.container(border=True):
-            col1, col2 = st.columns([3, 1])
-            with col1:
-              st.markdown(
-                  f"### ⚠️ {menu['Recipe_Name']}"
-                  f" <small>({menu['Recipe_Group']})</small>",
-                  unsafe_allow_html=True,
-              )
-              st.caption(f"รหัสเมนู: {menu['Recipe_ID']}")
-            with col2:
-              st.metric(
-                  label='ต้นทุนโดยประมาณ', value=f"฿{menu['Total_Cost']:.2f}"
-              )
+    # ดึงส่วนผสมของเมนูนี้
+    ingredients = ig_recipe_df[ig_recipe_df['Recipe_ID'] == r_id]
 
-            # แสดงรายการวัตถุดิบที่ยังขาด
-            st.warning('ขาดวัตถุดิบดังนี้:')
-            for item in menu['Missing_Items']:
-              if 'Reason' in item:
-                st.text(
-                    f"• {item['วัตถุดิบ']} ({item['Item_Code']}) —"
-                    f" {item['Reason']}"
-                )
-              else:
-                need = item.get('Need', 0)
-                current = item.get('Current_Stock', 0)
-                unit = item.get('Unit', '')
-                st.text(
-                    f"• {item['วัตถุดิบ']}: ต้องการ {need} {unit}"
-                    f" (ในตู้มี {current} {unit})"
-                )
+    missing_items = []
+    ready_to_cook = True
+    total_recipe_cost = 0.0
 
-except Exception as e:
-  st.error(
-      f'เกิดข้อผิดพลาดในการแสดงผลหน้าเมนูอาหาร กรุณาตรวจสอบโค้ดหรือชีท: {e}'
-  )      
+    for _, ing in ingredients.iterrows():
+      item_code = ing['Item_Code']
+      item_name = ing['วัตถุดิบ']
+      qty_need = float(ing['QTY_Need'] or 0)
+      usage_unit = str(ing.get('Usage_Unit', ''))
 
- # --- ส่วนแสดงผลหน้าจอ เมนูอาหารและต้นทุน (วางไว้ท้ายสุดของไฟล์) ---
-st.markdown("---")
-st.subheader("🍳 ระบบแนะนำเมนูอาหารและต้นทุนจากวัตถุดิบในตู้")
+      # ค้นหาข้อมูลสต็อกและราคาจากชีท IV (เทียบด้วย ItemCode)
+      stock_row = stock_df[stock_df['ItemCode'] == item_code]
 
-try:
-    # โหลดข้อมูล
-    recipe_df, ig_recipe_df = load_recipes_data()
-    stock_df = load_data()
-    
-    if recipe_df.empty:
-        st.info("💡 ยังไม่พบข้อมูลในชีท Recipe ลองตรวจสอบชื่อชีทหรือเพิ่มข้อมูลเมนูก่อนนะจ๊ะ")
-    else:
-        # เรียกฟังก์ชันคำนวณที่เราเขียนไว้
-        menu_results = check_and_cost_recipes(recipe_df, ig_recipe_df, stock_df)
-        
-        ready_menus = [m for m in menu_results if m['Ready']]
-        not_ready_menus = [m for m in menu_results if not m['Ready']]
-        
-        # สร้างแท็บแสดงผล
-        tab1, tab2 = st.tabs([f"🟢 ทำได้เลย ({len(ready_menus)} เมนู)", f"🟡 วัตถุดิบไม่ครบ ({len(not_ready_menus)} เมนู)"])
-        
-        with tab1:
-            if not ready_menus:
-                st.write("😢 ตอนนี้ยังไม่มีเมนูไหนที่วัตถุดิบครบถ้วนเลย")
-            else:
-                for menu in ready_menus:
-                    with st.container(border=True):
-                        st.markdown(f"### ✅ {menu['Recipe_Name']} <small>({menu['Recipe_Group']})</small>", unsafe_allow_html=True)
-                        st.success(f"วัตถุดิบครบถ้วน! | ต้นทุนรวม: ฿{menu['Total_Cost']:.2f}")
-                        
-        with tab2:
-            if not not_ready_menus:
-                st.write("🎉 ยอดเยี่ยม! ทุกเมนูวัตถุดิบครบพร้อมทำได้หมดเลย")
-            else:
-                for menu in not_ready_menus:
-                    with st.container(border=True):
-                        st.markdown(f"### ⚠️ {menu['Recipe_Name']} <small>({menu['Recipe_Group']})</small>", unsafe_allow_html=True)
-                        st.warning(f"ของไม่พอ | ต้นทุนโดยประมาณ: ฿{menu['Total_Cost']:.2f}")
-                        for item in menu['Missing_Items']:
-                            if 'Reason' in item:
-                                st.text(f"• {item['วัตถุดิบ']} — {item['Reason']}")
-                            else:
-                                st.text(f"• {item['วัตถุดิบ']}: ต้องการ {item.get('Need')} (มีในตู้ {item.get('Current_Stock')})")
+      if stock_row.empty:
+        ready_to_cook = False
+        missing_items.append({
+            'Item_Code': item_code,
+            'วัตถุดิบ': item_name,
+            'Reason': 'ไม่พบรายการนี้ในสต็อก (IV)',
+        })
+        continue
 
-except Exception as e:
-    st.error(f"เกิดข้อผิดพลาดในการแสดงผลหน้าเมนู: {e}") 
+      # ดึงค่าจากชีท IV อย่างปลอดภัย
+      raw_stock = float(stock_row['Stock'].values[0] or 0)
+      price_per_unit = float(stock_row['Price'].values[0] or 0)
+
+      total_volume_per_unit = 1.0
+      try:
+        val = stock_row['Total_Volume_Per_Unit'].values[0]
+        if val != '':
+          total_volume_per_unit = float(val)
+      except Exception:
+        total_volume_per_unit = 1.0
+
+      # แปลงสต็อกหน่วยใหญ่ให้เป็นหน่วยย่อย (เช่น ขวด -> มล.) ก่อนนำไปเช็ก
+      total_available_in_base_unit = raw_stock * total_volume_per_unit
+
+      # คำนวณต้นทุนต่อหน่วยย่อย
+      cost_per_base_unit = (
+          price_per_unit / total_volume_per_unit
+          if total_volume_per_unit > 0
+          else 0
+      )
+      ingredient_cost = qty_need * cost_per_base_unit
+      total_recipe_cost += ingredient_cost
+
+      # เช็กสต็อกว่าเพียงพอมั้ย (เทียบด้วยหน่วยย่อยที่แปลงแล้ว)
+      if total_available_in_base_unit < qty_need:
+        ready_to_cook = False
+        missing_items.append({
+            'Item_Code': item_code,
+            'วัตถุดิบ': item_name,
+            'Need': qty_need,
+            'Current_Stock': total_available_in_base_unit,
+            'Unit': usage_unit,
+        })
+
+    recipe_results.append({
+        'Recipe_ID': r_id,
+        'Recipe_Name': r_name,
+        'Recipe_Group': r_group,
+        'Ready': ready_to_cook,
+        'Total_Cost': total_recipe_cost,
+        'Missing_Items': missing_items,
+    })
+
+  return recipe_results 
+
+st.markdown('---')
+st.subheader('🍳 ระบบแนะนำเมนูอาหารและต้นทุนจากวัตถุดิบในตู้')
+
+# 1. ปุ่มสำหรับกดโหลดหรือรีเฟรชข้อมูลสูตรอาหาร
+if st.button('🔄 โหลด/อัปเดตข้อมูลเมนูอาหาร'):
+  st.rerun()
+
